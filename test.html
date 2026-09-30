@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Test</title>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    
+    <style>
+        #preview {
+            max-width: 100%;
+            height: auto;
+        }
+        #ocr-result {
+            white-space: pre-wrap;
+        }
+        </style>
+</head>
+<body>
+    <h1>OCR Test</h1>
+    <input type="file" accept="image/*" id="ocr-imgs">
+    <img src="" alt="プレビュー" id="preview" hidden>
+    <button id="ocr-btn">読み取る</button>
+    <p id="ocr-result"></p>
+    
+    <script>
+        const input = document.getElementById('ocr-imgs');
+        input.addEventListener('change', function() {
+            const files = input.files;
+            const file = files[0];
+            if (!file) {
+                return
+            }
+            
+            const reader = new FileReader();
+            
+            reader.addEventListener('load', function() {
+                const img = document.getElementById('preview');
+                img.src = reader.result;
+                img.hidden = false;
+                console.log(reader.result);
+            });
+            
+            reader.readAsDataURL(file);
+
+            console.log(file.name);
+            console.log(file.type);
+            console.log(file.size);
+        });
+
+
+        const ocrbtn = document.getElementById('ocr-btn');
+        ocrbtn.addEventListener('click', runOCR);
+
+        async function runOCR() {
+            const img = document.getElementById('preview');
+            const resultEl = document.getElementById('ocr-result');
+            
+            if(!img.src || img.hidden) {
+                return;
+            }
+            
+            input.disabled  = true;
+            ocrbtn.disabled = true;
+            resultEl.textContent = '読み取り中．．．';
+
+            let worker = null;
+            try {
+                worker = await Tesseract.createWorker('eng+jpn');
+                await worker.setParameters({
+                    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT
+                });
+                const result = await worker.recognize(img.src);
+                resultEl.textContent = result.data.text;
+            } catch (error) {
+                console.error(error);
+                resultEl.textContent = '読み取りに失敗しました';
+            } finally {
+                if (worker) {
+                    try {
+                        await worker.terminate();                
+                    } catch (e) {
+                        console.error('ワーカーの終了に失敗:', e);
+                    }
+                }
+                input.disabled  = false;
+                ocrbtn.disabled = false;
+            }
+        }
+
+    </script>
+</body>
+</html>

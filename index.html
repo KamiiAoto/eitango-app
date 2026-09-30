@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesseract.js OCR 実験</title>
+    <!-- Tesseract.js v5（公式READMEに記載されたCDN形式） -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 16px;
+            font-family: system-ui, sans-serif;
+        }
+
+        button,
+        select,
+        input {
+            min-height: 44px;
+            margin: 4px;
+            font: inherit;
+        }
+
+        .camera-controls,
+        .file-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .camera-frame {
+            position: relative;
+            width: min(100%, 720px);
+            overflow: hidden;
+            background: #111;
+        }
+
+        #camera-video {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        .scan-guide {
+            position: absolute;
+            top: 8%;
+            left: 8%;
+            width: 84%;
+            height: 84%;
+            border: 3px solid #ef4444;
+            box-shadow: 0 0 0 9999px rgb(0 0 0 / 25%);
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+
+        .scan-guide span {
+            position: absolute;
+            top: 0;
+            left: 0;
+            padding: 4px 8px;
+            color: white;
+            background: #ef4444;
+            font-size: 14px;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            align-items: start;
+        }
+
+        .workspace img {
+            display: none;
+            width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+        }
+
+        #result {
+            box-sizing: border-box;
+            width: 100%;
+            min-height: 360px;
+        }
+
+        #status {
+            min-height: 1.5em;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tesseract.js OCR 実験</h1>
+
+    <section>
+        <h2>リアルタイムカメラ</h2>
+        <div class="camera-controls">
+            <button type="button" id="start-camera">カメラを開始</button>
+            <button type="button" id="stop-camera" disabled>停止</button>
+            <span>赤枠内に単語帳の1ページを大きく映してください。</span>
+        </div>
+        <div class="camera-frame" id="camera-frame" hidden>
+            <video id="camera-video" autoplay muted playsinline></video>
+            <div class="scan-guide" id="scan-guide"><span>1ページを枠内へ</span></div>
+        </div>
+    </section>
+
+    <!-- 画像アップロード -->
+    <section>
+        <h2>画像ファイル</h2>
+        <div class="file-controls">
+            <label for="target-region">読み取り範囲:</label>
+            <select id="target-region">
+                <option value="right" selected>右ページ</option>
+                <option value="left">左ページ</option>
+                <option value="full">画像全体（非推奨）</option>
+            </select>
+            <input type="file" id="upload-image" accept="image/*">
+        </div>
+    </section>
+
+    <!-- プレビューと結果表示 -->
+    <div class="workspace">
+        <div>
+            <h3>元画像</h3>
+            <img id="preview" alt="選択した元画像">
+        </div>
+        <div>
+            <h3>OCR対象（切り出し・補正後）</h3>
+            <img id="processed-preview" alt="切り出しと補正を行ったOCR対象画像">
+        </div>
+        <div>
+            <h3>認識結果</h3>
+            <p id="status" role="status" aria-live="polite">カメラを開始するか、画像を選択してください。</p>
+            <textarea id="result" rows="10" cols="50" readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        const upload = document.getElementById('upload-image');
+        const targetRegion = document.getElementById('target-region');
+        const preview = document.getElementById('preview');
+        const processedPreview = document.getElementById('processed-preview');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        const startCameraButton = document.getElementById('start-camera');
+        const stopCameraButton = document.getElementById('stop-camera');
+        const cameraFrame = document.getElementById('camera-frame');
+        const cameraVideo = document.getElementById('camera-video');
+        const scanGuide = document.getElementById('scan-guide');
+        let selectedFile;
+        let cameraStream;
+        let cameraLoopId = 0;
+
+        startCameraButton.addEventListener('click', startCamera);
+        stopCameraButton.addEventListener('click', () => stopCamera());
+        window.addEventListener('pagehide', () => stopCamera({ updateStatus: false }));
+
+        upload.addEventListener('change', event => {
+            selectedFile = event.target.files[0];
+            if (!selectedFile) return;
+            stopCamera({ updateStatus: false });
+            prepareAndRunOCR(selectedFile);
+        });
+
+        targetRegion.addEventListener('change', () => {
+            if (selectedFile && !cameraStream) prepareAndRunOCR(selectedFile);
+        });
+
+        async function startCamera() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                status.textContent = 'カメラを利用できません。localhost または HTTPS で開いてください。';
+                return;
+            }
+
+            stopCamera({ updateStatus: false });
+            startCameraButton.disabled = true;
+            status.textContent = 'カメラの使用許可を待っています...';
+
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        frameRate: { ideal: 15, max: 30 },
+                    },
+                });
+
+                cameraVideo.srcObject = cameraStream;
+                cameraFrame.hidden = false;
+                await cameraVideo.play();
+                updateScanGuide();
+                stopCameraButton.disabled = false;
+                status.textContent = 'カメラを認識しました。赤枠内を順番に読み取ります。';
+
+                const currentLoopId = ++cameraLoopId;
+                recognizeCameraFrames(currentLoopId);
+            } catch (error) {
+                console.error(error);
+                const message = cameraErrorMessage(error);
+                stopCamera({ updateStatus: false });
+                status.textContent = message;
+            }
+        }
+
+        function stopCamera({ updateStatus = true } = {}) {
+            cameraLoopId += 1;
+
+            if (cameraStream) {
+                for (const track of cameraStream.getTracks()) track.stop();
+            }
+
+            cameraStream = undefined;
+            cameraVideo.srcObject = null;
+            cameraFrame.hidden = true;
+            startCameraButton.disabled = false;
+            stopCameraButton.disabled = true;
+
+            if (updateStatus) status.textContent = 'カメラを停止しました。';
+        }
+
+        async function recognizeCameraFrames(loopId) {
+            while (cameraStream && loopId === cameraLoopId) {
+                const startedAt = Date.now();
+
+                try {
+                    if (cameraVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+                        await delay(250);
+                        continue;
+                    }
+
+                    const canvas = preprocessSource(
+                        cameraVideo,
+                        cameraVideo.videoWidth,
+                        cameraVideo.videoHeight,
+                        'camera',
+                    );
+                    const sharpness = estimateSharpness(canvas);
+                    if (sharpness < 4.2) {
+                        status.textContent = `ピントを合わせて静止してください（鮮明度 ${sharpness.toFixed(1)}）。`;
+                        await delay(600);
+                        continue;
+                    }
+
+                    processedPreview.src = canvas.toDataURL('image/jpeg', 0.88);
+                    processedPreview.style.display = 'block';
+                    await runVocabularyOCR(canvas, 'リアルタイム認識');
+
+                    if (!cameraStream || loopId !== cameraLoopId) {
+                        status.textContent = 'カメラを停止しました。';
+                        return;
+                    }
+                } catch (error) {
+                    console.error(error);
+                    status.textContent = `カメラOCRエラー: ${error.message ?? error}`;
+                    stopCamera({ updateStatus: false });
+                    return;
+                }
+
+                // OCR完了後、最低0.8秒空けてから次のフレームを処理する。
+                const elapsed = Date.now() - startedAt;
+                await delay(Math.max(800, 2500 - elapsed));
+            }
+        }
+
+        function cameraErrorMessage(error) {
+            if (error?.name === 'NotAllowedError') {
+                return 'カメラが許可されていません。ブラウザーのサイト設定でカメラを許可してください。';
+            }
+            if (error?.name === 'NotFoundError') {
+                return '利用できるカメラが見つかりません。';
+            }
+            if (error?.name === 'NotReadableError') {
+                return 'カメラを開始できません。他のアプリが使用していないか確認してください。';
+            }
+            return `カメラエラー: ${error?.message ?? error}`;
+        }
+
+        function delay(milliseconds) {
+            return new Promise(resolve => setTimeout(resolve, milliseconds));
+        }
+
+        function updateScanGuide() {
+            const frameWidth = cameraVideo.clientWidth;
+            const frameHeight = cameraVideo.clientHeight;
+            if (!frameWidth || !frameHeight) return;
+
+            const pageAspectRatio = 0.65;
+            const maxWidth = frameWidth * 0.84;
+            const maxHeight = frameHeight * 0.84;
+            let guideWidth = maxWidth;
+            let guideHeight = guideWidth / pageAspectRatio;
+
+            if (guideHeight > maxHeight) {
+                guideHeight = maxHeight;
+                guideWidth = guideHeight * pageAspectRatio;
+            }
+
+            scanGuide.style.width = `${guideWidth}px`;
+            scanGuide.style.height = `${guideHeight}px`;
+            scanGuide.style.left = `${(frameWidth - guideWidth) / 2}px`;
+            scanGuide.style.top = `${(frameHeight - guideHeight) / 2}px`;
+        }
+
+        new ResizeObserver(updateScanGuide).observe(cameraVideo);
+
+        async function prepareAndRunOCR(file) {
+            upload.disabled = true;
+            targetRegion.disabled = true;
+            status.textContent = '画像を切り出して補正しています...';
+            result.value = '';
+
+            const reader = new FileReader();
+            reader.onload = async event => {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+
+                try {
+                    const canvas = await preprocessImage(event.target.result, targetRegion.value);
+                    processedPreview.src = canvas.toDataURL('image/png');
+                    processedPreview.style.display = 'block';
+                    await runOCR(canvas);
+                } catch (error) {
+                    console.error(error);
+                    status.textContent = `エラー: ${error.message ?? error}`;
+                } finally {
+                    upload.disabled = false;
+                    targetRegion.disabled = false;
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function preprocessImage(imageSrc, regionName) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+                image.onload = () => {
+                    resolve(preprocessSource(
+                        image,
+                        image.naturalWidth,
+                        image.naturalHeight,
+                        regionName,
+                    ));
+                };
+                image.src = imageSrc;
+            });
+        }
+
+        function preprocessSource(source, sourceNaturalWidth, sourceNaturalHeight, regionName) {
+            // サンプル写真では左右ページを分離し、カメラでは赤枠と同じ中央領域を使う。
+            const regions = {
+                right: { x: 0.247, y: 0.093, width: 0.723, height: 0.855 },
+                left: { x: 0.10, y: 0.10, width: 0.68, height: 0.84 },
+                full: { x: 0, y: 0, width: 1, height: 1 },
+            };
+            let sourceX;
+            let sourceY;
+            let sourceWidth;
+            let sourceHeight;
+
+            if (regionName === 'camera') {
+                const pageAspectRatio = 0.65;
+                const maxWidth = sourceNaturalWidth * 0.84;
+                const maxHeight = sourceNaturalHeight * 0.84;
+                sourceWidth = maxWidth;
+                sourceHeight = sourceWidth / pageAspectRatio;
+
+                if (sourceHeight > maxHeight) {
+                    sourceHeight = maxHeight;
+                    sourceWidth = sourceHeight * pageAspectRatio;
+                }
+
+                sourceX = Math.round((sourceNaturalWidth - sourceWidth) / 2);
+                sourceY = Math.round((sourceNaturalHeight - sourceHeight) / 2);
+                sourceWidth = Math.round(sourceWidth);
+                sourceHeight = Math.round(sourceHeight);
+            } else {
+                const region = regions[regionName] ?? regions.full;
+                sourceX = Math.round(sourceNaturalWidth * region.x);
+                sourceY = Math.round(sourceNaturalHeight * region.y);
+                sourceWidth = Math.min(
+                    Math.round(sourceNaturalWidth * region.width),
+                    sourceNaturalWidth - sourceX,
+                );
+                sourceHeight = Math.min(
+                    Math.round(sourceNaturalHeight * region.height),
+                    sourceNaturalHeight - sourceY,
+                );
+            }
+
+            if (sourceWidth < 1 || sourceHeight < 1) {
+                throw new Error('カメラ映像の準備が完了していません。');
+            }
+
+            // 小さい入力は最大3倍に拡大し、大きい入力は幅1600px程度に抑える。
+            const scale = Math.min(3, 1600 / sourceWidth);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+            canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(
+                source,
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight,
+                0,
+                0,
+                canvas.width,
+                canvas.height,
+            );
+            normalizeGrayscale(context, canvas.width, canvas.height);
+            return canvas;
+        }
+
+        function normalizeGrayscale(context, width, height) {
+            const imageData = context.getImageData(0, 0, width, height);
+            const pixels = imageData.data;
+            const histogram = new Uint32Array(256);
+
+            for (let index = 0; index < pixels.length; index += 4) {
+                const gray = Math.round(
+                    pixels[index] * 0.299
+                    + pixels[index + 1] * 0.587
+                    + pixels[index + 2] * 0.114,
+                );
+                pixels[index] = gray;
+                pixels[index + 1] = gray;
+                pixels[index + 2] = gray;
+                histogram[gray] += 1;
+            }
+
+            // 上下1%の外れ値を除外してコントラストを広げる。
+            const pixelCount = width * height;
+            const lowerTarget = pixelCount * 0.01;
+            const upperTarget = pixelCount * 0.99;
+            let accumulated = 0;
+            let low = 0;
+            let high = 255;
+
+            for (let value = 0; value < 256; value += 1) {
+                accumulated += histogram[value];
+                if (accumulated >= lowerTarget) {
+                    low = value;
+                    break;
+                }
+            }
+
+            accumulated = 0;
+            for (let value = 0; value < 256; value += 1) {
+                accumulated += histogram[value];
+                if (accumulated >= upperTarget) {
+                    high = value;
+                    break;
+                }
+            }
+
+            const range = Math.max(1, high - low);
+            for (let index = 0; index < pixels.length; index += 4) {
+                const normalized = Math.max(
+                    0,
+                    Math.min(255, Math.round((pixels[index] - low) * 255 / range)),
+                );
+                pixels[index] = normalized;
+                pixels[index + 1] = normalized;
+                pixels[index + 2] = normalized;
+            }
+
+            context.putImageData(imageData, 0, 0);
+        }
+
+        function estimateSharpness(canvas) {
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+            const stride = 4;
+            let total = 0;
+            let count = 0;
+
+            for (let y = 2; y < canvas.height - 2; y += stride) {
+                for (let x = 2; x < canvas.width - 2; x += stride) {
+                    const index = (y * canvas.width + x) * 4;
+                    const center = data[index];
+                    const left = data[index - 4];
+                    const right = data[index + 4];
+                    const above = data[index - canvas.width * 4];
+                    const below = data[index + canvas.width * 4];
+                    total += Math.abs(4 * center - left - right - above - below);
+                    count += 1;
+                }
+            }
+
+            return count ? total / count : 0;
+        }
+
+        function extractCanvasRegion(source, x, y, width, height) {
+            const canvas = document.createElement('canvas');
+            const sourceX = Math.round(source.width * x);
+            const sourceY = Math.round(source.height * y);
+            const sourceWidth = Math.round(source.width * width);
+            const sourceHeight = Math.round(source.height * height);
+            canvas.width = Math.max(1, sourceWidth);
+            canvas.height = Math.max(1, sourceHeight);
+            canvas.getContext('2d').drawImage(
+                source,
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight,
+                0,
+                0,
+                canvas.width,
+                canvas.height,
+            );
+            return canvas;
+        }
+
+        let workerPromise;
+        let ocrQueue = Promise.resolve();
+
+        function getWorker() {
+            if (!workerPromise) {
+                if (typeof Tesseract === 'undefined') {
+                    throw new Error('Tesseract.jsを読み込めません。ネットワーク接続を確認してください。');
+                }
+
+                const langPath = new URL('.', window.location.href).href.replace(/\/$/, '');
+
+                workerPromise = Tesseract.createWorker(['jpn', 'eng'], 1, {
+                    // このフォルダーの jpn.traineddata / eng.traineddata を使用する。
+                    langPath,
+                    gzip: false,
+                    logger: message => {
+                        if (typeof message.progress === 'number') {
+                            status.textContent = `${message.status}: ${Math.round(message.progress * 100)}%`;
+                        } else if (message.status) {
+                            status.textContent = message.status;
+                        }
+                    },
+                }).then(async worker => {
+                    await worker.setParameters({
+                        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                        preserve_interword_spaces: '1',
+                    });
+                    return worker;
+                }).catch(error => {
+                    workerPromise = undefined;
+                    throw error;
+                });
+            }
+
+            return workerPromise;
+        }
+
+        function runOCR(imageSrc, mode = '画像') {
+            const job = ocrQueue.catch(() => undefined).then(async () => {
+                status.textContent = 'OCRを初期化しています...（初回は少し時間がかかります）';
+                const worker = await getWorker();
+                await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+                const response = await worker.recognize(imageSrc);
+
+                status.textContent = `${mode}完了。次のフレームを待っています。`;
+                result.value = response.data.text;
+                return response;
+            });
+
+            ocrQueue = job;
+            return job;
+        }
+
+        function runVocabularyOCR(pageCanvas, mode = '単語ページ認識') {
+            const rowBoundaries = [0.083, 0.204, 0.299, 0.420, 0.521, 0.627, 0.734, 0.842, 0.949];
+            const job = ocrQueue.catch(() => undefined).then(async () => {
+                const worker = await getWorker();
+                await worker.setParameters({
+                    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+                    preserve_interword_spaces: '1',
+                });
+
+                const rows = [];
+                for (let index = 0; index < rowBoundaries.length - 1; index += 1) {
+                    status.textContent = `${mode}: ${index + 1}/8行を認識中...`;
+                    const top = rowBoundaries[index];
+                    const height = rowBoundaries[index + 1] - top;
+                    const rowCanvas = extractCanvasRegion(pageCanvas, 0.04, top, 0.44, height);
+                    const response = await worker.recognize(rowCanvas);
+                    const text = response.data.text
+                        .replace(/\s*\n\s*/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    rows.push(`${index + 1}. ${text || '（認識できませんでした）'}`);
+                    result.value = rows.join('\n\n');
+                }
+
+                status.textContent = `${mode}完了。次のフレームを待っています。`;
+                return rows;
+            });
+
+            ocrQueue = job;
+            return job;
+        }
+    </script>
+</body>
+</html>
