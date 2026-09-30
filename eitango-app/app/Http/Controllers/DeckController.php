@@ -6,8 +6,20 @@ use Illuminate\Http\Request;
 
 class DeckController extends Controller
 {
-    public function index() 
+    public function index(Request $request) 
     {
-        return view('decks.index');
+        $decks = $request->user()->decks()->get();
+        return view('decks.index', ['decks' => $decks]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|min:1|max:100',
+        ]);
+        
+        $request->user()->decks()->create($validated);
+
+        return redirect('/decks');
     }
 }

@@ -19,9 +19,12 @@ Route::middleware(['auth'])->group(function () {
     Volt::route('settings/password', 'settings.password')->name('settings.password');
     Volt::route('settings/appearance', 'settings.appearance')->name('settings.appearance');
 
+    Route::get('/decks', [DeckController::class, 'index']);
+    Route::post('/decks', [DeckController::class, 'store']);
+    
+
 
 });
 
-Route::get('/decks', [DeckController::class, 'index']);
     
 require __DIR__.'/auth.php';
