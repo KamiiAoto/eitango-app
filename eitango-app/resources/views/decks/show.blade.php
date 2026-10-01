@@ -24,6 +24,13 @@
         </div>
         <button type="submit">追加</button>
     </form>
+    <form action="/decks/{{ $deck->id }}" method="get">
+        <input type="text" name="q" value="{{ $q }}" placeholder="英語または日本語で検索">
+        <button type="submit">検索</button>
+        @if ($q !== '')
+            <a href="/decks/{{ $deck->id }}">検索解除</a>
+        @endif
+    </form>
     @forelse ($cards as $card)
         <p>{{ $card->term }} - {{ $card->meaning }}</p>
         <a href="/cards/{{ $card->id }}/edit">編集</a>
@@ -33,8 +40,13 @@
             <button type="submit">削除</button>
         </form>
     @empty
-        <p>カードはまだありません</p>
+        @if ($q !=='')
+            <p>「{{ $q }}」に一致するカードはありません</p>
+        @else
+            <p>カードはまだありません</p>
+        @endif
     @endforelse
+    {{ $cards->links() }}
 
     <script>
         document.querySelectorAll('.card-delete-form').forEach(function(form) {

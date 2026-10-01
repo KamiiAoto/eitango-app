@@ -49,7 +49,16 @@ class DeckController extends Controller
     public function show(Request $request, $id)
     {
         $deck = $request->user()->decks()->findOrFail($id);
-        $cards = $deck->cards()->get();
-        return view('decks.show', ['deck' => $deck, 'cards' => $cards]);
+        $q = trim($request->input('q', ''));
+
+        $query = $deck->cards()->orderBy('id');
+        if ($q !== '') {
+            $query->where(function ($query) use ($q) {
+                $query->where('term', 'like', '%' . $q . '%')
+                    ->orWhere('meaning', 'like', '%' . $q . '%');
+            });
+        }
+        $cards = $query->paginate(50)->withQueryString();
+        return view('decks.show', ['deck' => $deck, 'cards' => $cards, 'q' => $q]);
     }
 }
