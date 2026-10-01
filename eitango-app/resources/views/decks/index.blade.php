@@ -19,7 +19,7 @@
     @forelse ($decks as $deck)
         <p>{{ $deck->name }}</p>
         <a href="/decks/{{ $deck->id }}/edit">編集</a>
-        <form action="/decks/{{ $deck->id }}" method="post">
+        <form action="/decks/{{ $deck->id }}" method="post" class="delete-form" data-name="{{ $deck->name }}">
             @csrf
             @method('DELETE')
             <button type="submit">削除</button>
@@ -27,6 +27,18 @@
     @empty
         <p>単語帳はまだありません</p>
     @endforelse
+
+    <script>
+    document.querySelectorAll('.delete-form').forEach(function(form)
+    {
+        form.addEventListener('submit', function(event) {
+            const name = this.dataset.name;
+            if (!window.confirm('「' + name + '」を削除しますか？')) {
+                event.preventDefault();
+            }
+        });
+    });
+    </script>
 
 </body>
 </html>
