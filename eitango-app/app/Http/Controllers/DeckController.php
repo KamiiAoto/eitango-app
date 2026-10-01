@@ -49,7 +49,8 @@ class DeckController extends Controller
     public function show(Request $request, $id)
     {
         $deck = $request->user()->decks()->findOrFail($id);
-        $q = trim($request->input('q', ''));
+        $input = $request->input('q', '');
+        $q = is_string($input) ? trim($input) : '';
 
         $query = $deck->cards()->orderBy('id');
         if ($q !== '') {
