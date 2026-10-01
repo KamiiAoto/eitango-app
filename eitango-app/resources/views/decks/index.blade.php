@@ -17,9 +17,9 @@
         <button type="submit">作成</button>
     </form>
     @forelse ($decks as $deck)
-        <p>{{ $deck->name }}</p>
+        <a href="/decks/{{ $deck->id }}">{{ $deck->name }}</a>
         <a href="/decks/{{ $deck->id }}/edit">編集</a>
-        <form action="/decks/{{ $deck->id }}" method="post" class="delete-form" data-name="{{ $deck->name }}">
+        <form action="/decks/{{ $deck->id }}" method="post" class="delete-form" data-name="{{ $deck->name }}" data-count="{{ $deck->cards_count }}">
             @csrf
             @method('DELETE')
             <button type="submit">削除</button>
@@ -29,11 +29,16 @@
     @endforelse
 
     <script>
-    document.querySelectorAll('.delete-form').forEach(function(form)
-    {
+    document.querySelectorAll('.delete-form').forEach(function(form){
         form.addEventListener('submit', function(event) {
             const name = this.dataset.name;
-            if (!window.confirm('「' + name + '」を削除しますか？')) {
+            const count = parseInt(this.dataset.count, 10);
+            let message = '「' + name + '」';
+            if (count > 0) {
+                message += 'と、その中のカード' + count + '件';
+            }
+            message += 'を削除しますか？';
+            if (!window.confirm(message)) {
                 event.preventDefault();
             }
         });

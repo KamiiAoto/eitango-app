@@ -8,7 +8,7 @@ class DeckController extends Controller
 {
     public function index(Request $request) 
     {
-        $decks = $request->user()->decks()->get();
+        $decks = $request->user()->decks()->withCount('cards')->get();
         return view('decks.index', ['decks' => $decks]);
     }
 
@@ -44,5 +44,12 @@ class DeckController extends Controller
         $deck = $request->user()->decks()->findOrFail($id);
         $deck->delete();
         return redirect('/decks');
+    }
+
+    public function show(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        $cards = $deck->cards()->get();
+        return view('decks.show', ['deck' => $deck, 'cards' => $cards]);
     }
 }

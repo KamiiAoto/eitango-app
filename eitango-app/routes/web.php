@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DeckController;
+use App\Http\Controllers\CardController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -24,7 +25,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/decks/{deck}/edit', [DeckController::class, 'edit']);
     Route::patch('/decks/{deck}', [DeckController::class, 'update']);
     Route::delete('/decks/{deck}', [DeckController::class, 'destroy']);
-
+    Route::get('/decks/{deck}', [DeckController::class, 'show']);
+    Route::post('/decks/{deck}/cards', [CardController::class, 'store']);
+    
     
 
 
