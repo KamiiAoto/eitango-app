@@ -21,6 +21,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/decks', [DeckController::class, 'index']);
     Route::post('/decks', [DeckController::class, 'store']);
+    Route::get('/decks/{deck}/edit', [DeckController::class, 'edit']);
+    Route::patch('/decks/{deck}', [DeckController::class, 'update']);
+    Route::delete('/decks/{deck}', [DeckController::class, 'destroy']);
+
     
 
 

@@ -18,6 +18,12 @@
     </form>
     @forelse ($decks as $deck)
         <p>{{ $deck->name }}</p>
+        <a href="/decks/{{ $deck->id }}/edit">編集</a>
+        <form action="/decks/{{ $deck->id }}" method="post">
+            @csrf
+            @method('DELETE')
+            <button type="submit">削除</button>
+        </form>
     @empty
         <p>単語帳はまだありません</p>
     @endforelse

@@ -22,4 +22,27 @@ class DeckController extends Controller
 
         return redirect('/decks');
     }
+
+    public function edit(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        return view('decks.edit', ['deck' => $deck]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'required|string|min:1|max:100',
+        ]);
+        $deck->update($validated);
+        return redirect('/decks');
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        $deck->delete();
+        return redirect('/decks');
+    }
 }
