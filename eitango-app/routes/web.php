@@ -28,6 +28,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/decks/{deck}', [DeckController::class, 'show']);
     Route::post('/decks/{deck}/cards', [CardController::class, 'store']);
     
+    Route::get('/cards/{card}/edit', [CardController::class, 'edit']);
+    Route::patch('/cards/{card}', [CardController::class, 'update']);
+    Route::delete('/cards/{card}', [CardController::class, 'destroy']);
+    
+    
     
 
 

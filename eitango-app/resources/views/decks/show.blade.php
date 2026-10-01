@@ -26,8 +26,25 @@
     </form>
     @forelse ($cards as $card)
         <p>{{ $card->term }} - {{ $card->meaning }}</p>
+        <a href="/cards/{{ $card->id }}/edit">編集</a>
+        <form action="/cards/{{ $card->id }}" method="post" class="card-delete-form" data-term="{{ $card->term }}">
+            @csrf
+            @method('DELETE')
+            <button type="submit">削除</button>
+        </form>
     @empty
         <p>カードはまだありません</p>
     @endforelse
+
+    <script>
+        document.querySelectorAll('.card-delete-form').forEach(function(form) {
+            form.addEventListener('submit', function(event) {
+                const term = this.dataset.term;
+                if (!window.confirm('「' + term + '」を削除しますか？')) {
+                    event.preventDefault();
+                }
+            });
+        });
+    </script>
 </body>
 </html>
