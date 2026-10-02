@@ -23,33 +23,49 @@
 
     <script>
         const input = document.getElementById('imageInput');
+        const ocrbtn = document.getElementById('ocrBtn');
+        const img = document.getElementById('preview');
+        const resultEl = document.getElementById('result');
+        const statusEl = document.getElementById('status');
+
+
         input.addEventListener('change', function() {
-            const files = input.files;
-            const file = files[0];
+            ocrbtn.disabled = true;
+            img.hidden = true;
+            img.removeAttribute('src');
+            resultEl.textContent = '';
+            statusEl.textContent = '';
+            
+        
+            const file = input.files[0];
             if (!file) {
                 return
             }
             
+            input.disabled = true;
+            statusEl.textContent = '画像を読み込み中．．．';
+            
             const reader = new FileReader();
             
             reader.addEventListener('load', function() {
-                const img = document.getElementById('preview');
                 img.src = reader.result;
                 img.hidden = false;
+                statusEl.textContent = '';
+                input.disabled = false;
                 ocrbtn.disabled = false;
             });
-            
+            reader.addEventListener('error', function() {
+                statusEl.textContent = '画像の読み込みに失敗しました．別の画像を選んでください．';
+                input.disabled = false;
+            });
+
             reader.readAsDataURL(file);
         });
 
 
-        const ocrbtn = document.getElementById('ocrBtn');
         ocrbtn.addEventListener('click', runOCR);
 
         async function runOCR() {
-            const img = document.getElementById('preview');
-            const resultEl = document.getElementById('result');
-            const statusEl = document.getElementById('status');
             
             if(!img.src || img.hidden) {
                 return;
