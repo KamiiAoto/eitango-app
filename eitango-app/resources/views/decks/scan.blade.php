@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>画像読み取り - {{ $deck->name }}</title>
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
     <h1>{{ $deck->name }} - 画像読み取り</h1>
@@ -26,6 +27,8 @@
     <div id="candidateList"></div>
     <button type="button" id="validateBtn">入力を確認</button>
     <p id="validateMessage"></p>
+    <button type="button" id="saveBtn">選択した候補を保存</button>
+    <p id="saveMessage"></p>
     
 
     <script>
@@ -134,7 +137,13 @@
         const addCandidateBtn = document.getElementById('addCandidateBtn');
         const validateBtn     = document.getElementById('validateBtn');
         const validateMessage = document.getElementById('validateMessage');
-
+        
+        const saveBtn     = document.getElementById('saveBtn');
+        const saveMessage = document.getElementById('saveMessage');
+        const csrfToken   = document.querySelector('meta[name="csrf-token"]').content;
+        const deckUrl     = '/decks/{{ $deck->id }}';
+        const bulkUrl     = deckUrl + '/cards/bulk';
+        let pendingRequest = null;  // { key: 'UUID', cardsJson: '送った内容' }
 
         addCandidateBtn.addEventListener('click', function() {
             if (candidates.length >= MAX_CANDIDATES) {
@@ -247,7 +256,7 @@
             return messages;
         }
 
-        validateBtn.addEventListener('click', function() {
+        function validateSelected() {
             errors = {};
             const selected = candidates.filter(function(c) {
                 return c.selected;
@@ -256,7 +265,7 @@
             if (selected.length === 0) {
                 validateMessage.textContent = '保存する候補を選択してください';
                 renderCandidates();
-                return;
+                return null;
             }
 
             selected.forEach(function(candidate) {
@@ -273,7 +282,103 @@
                 validateMessage.textContent = errorCount + '件の候補に問題があります';
             }
             renderCandidates();
+            return errorCount === 0 ? selected : null
+        }
+
+        validateBtn.addEventListener('click', function() {
+            validateSelected();
         });
+
+        function setSaving(saving) {
+            input.disabled = saving;
+            ocrbtn.disabled = saving || img.hidden;
+            validateBtn.disabled = saving;
+            saveBtn.disabled = saving;
+            addCandidateBtn.disabled = saving || candidates.length >= MAX_CANDIDATES;
+            candidateList.querySelectorAll('input, button').forEach(function(el) {
+                el.disabled = saving;
+            });
+        }
+
+        // Laravelの入力エラーを，行のidに対応づける
+        function showServerErrors(serverErrors, sentCards) {
+            errors = {};
+            const otherMessages = [];
+            Object.keys(serverErrors).forEach(function(key) {
+                const match = key.match(/^cards\.(\d+)\./);
+                if (match) {
+                    const id = sentCards[Number(match[1])].id;
+                    errors[id] = (errors[id] || []).concat(serverErrors[key]);
+                } else {
+                    otherMessages.push(...serverErrors[key]);
+                }
+            });
+            return otherMessages;
+        }
+
+        function showSaved(count) {
+            saveMessage.replaceChildren();
+            saveMessage.append(count + '件保存しました．');
+            const link = document.createElement('a');
+            link.href = deckUrl;
+            link.textContent = 'デッキ詳細で確認する';
+            saveMessage.append(link);
+        }
+
+        saveBtn.addEventListener('click', async function() {
+            const selected = validateSelected();
+            if (!selected) {
+                return;
+            }
+            const cards = selected.map(function(c) {
+                return { id: c.id, term: c.term, meaning: c.meaning };
+            });
+
+            // 同じ内容の再送なら同じキー，内容が変わったら新しいキー
+            const cardsJson = JSON.stringify(cards);
+            if (!pendingRequest || pendingRequest.cardsJson !== cardsJson) {
+                pendingRequest = { key: crypto.randomUUID(), cardsJson: cardsJson };
+            }
+            setSaving(true);
+            saveMessage.textContent = '保存中．．．';
+            
+            try {
+                const response = await fetch(bulkUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ request_key: pendingRequest.key, cards: cards }),
+                });
+                if (response.status === 422) {
+                    const data = await response.json();
+                    const otherMessages = showServerErrors(data.errors, cards);
+                    saveMessage.textContent = '入力内容に問題があります．' + otherMessages.join(' ');
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+
+                const data = await response.json();
+                const savedIds = cards.map(function(c) {
+                    return c.id;
+                });
+                candidates = candidates.filter(function(c) {
+                    return !savedIds.includes(c.id);
+                });
+                pendingRequest = null;
+                showSaved(data.saved_count);
+            } catch (error) {
+                console.error(error);
+                saveMessage.textContent = '保存に失敗しました．もう一度保存してください． ';
+            } finally {
+                setSaving(false);
+                renderCandidates();
+            }
+        })
 
         renderCandidates();
 
