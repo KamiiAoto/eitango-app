@@ -62,4 +62,10 @@ class DeckController extends Controller
         $cards = $query->paginate(50)->withQueryString();
         return view('decks.show', ['deck' => $deck, 'cards' => $cards, 'q' => $q]);
     }
+
+    public function scan(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        return view('decks.scan', ['deck' => $deck]);
+    }
 }

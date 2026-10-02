@@ -32,6 +32,7 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/cards/{card}', [CardController::class, 'update']);
     Route::delete('/cards/{card}', [CardController::class, 'destroy']);
     
+    Route::get('/decks/{deck}/scan', [DeckController::class, 'scan']);
     
     
 

@@ -8,6 +8,7 @@
 <body>
     <h1>{{ $deck->name }}</h1>
     <a href="/decks">← 一覧に戻る</a>
+    <a href="/decks/{{ $deck->id }}/scan">画像から読み取る</a>
     <form action="/decks/{{ $deck->id }}/cards" method="post">
         @csrf
         <div>
