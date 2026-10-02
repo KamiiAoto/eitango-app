@@ -58,21 +58,26 @@ class CardController extends Controller
             'cards.*.term'    => 'required|string|max:150',
             'cards.*.meaning' => 'required|string|max:1000',
         ]);
+        $contents = array_map(function ($card) {
+            return [$card['term'], $card['meaning']];
+        }, $validated['cards']);
+        $hash = hash('sha256', json_encode($contents));
 
         try {
-            $savedCount = DB::transaction(function () use ($deck, $validated) {
+            $savedCount = DB::transaction(function () use ($deck, $validated, $hash) {
                 // 同じキーで保存済みなら，保存せず前回の件数を返す
                 $existing = $deck->cardBulkRequests()
                     ->where('request_key', $validated['request_key'])
                     ->first();
                 if ($existing) {
-                    return $existing->saved_count;
+                    return $this->savedCountForRetry($existing, $hash);
                 }
 
                 // 先にキーを記録する（同時に届いた２つ目はここで一意制約エラーになる）
                 $deck->cardBulkRequests()->create([
-                    'request_key' => $validated['request_key'],
-                    'saved_count' => count($validated['cards']),
+                    'request_key'  => $validated['request_key'] ,
+                    'request_hash' => $hash,
+                    'saved_count'  => count($validated['cards']) ,
                 ]);
                 foreach ($validated['cards'] as $card) {
                     $deck->cards()->create([
@@ -85,12 +90,18 @@ class CardController extends Controller
             });
         } catch (UniqueConstraintViolationException $e) {
             // ほぼ同時に届いた同じ要求：先に処理された方の結果を返す
-            $savedCount = $deck->cardBulkRequests()
+            $existing = $deck->cardBulkRequests()
                 ->where('request_key', $validated['request_key'])
-                ->value('saved_count');
+                ->first();
+            $savedCount = $this->savedCountForRetry($existing, $hash);
         }
 
         return response()->json(['saved_count' => $savedCount]);
     }
 
+    private function savedCountForRetry($existing, $hash)
+    {
+        abort_if($existing->request_hash !== $hash, 409, 'この保存キーは別の内容で使用済みです');
+        return $existing->saved_count;
+    }
 }

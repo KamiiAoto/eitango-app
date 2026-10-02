@@ -143,7 +143,9 @@
         const csrfToken   = document.querySelector('meta[name="csrf-token"]').content;
         const deckUrl     = '/decks/{{ $deck->id }}';
         const bulkUrl     = deckUrl + '/cards/bulk';
-        let pendingRequest = null;  // { key: 'UUID', cardsJson: '送った内容' }
+        
+        let pendingRequest = null;  // 結果が確定していない要求 { key: 'UUID', cards: [送った行] }
+        let isSending = false;
 
         addCandidateBtn.addEventListener('click', function() {
             if (candidates.length >= MAX_CANDIDATES) {
@@ -205,6 +207,7 @@
                 candidateList.append(row);
             });
             updateCount();
+            updateControls();
         }
 
         // 件数表示と追加ボタンの状況を更新
@@ -213,7 +216,6 @@
                 return c.selected;
             }).length;
             candidateCount.textContent = '候補' + candidates.length + '件・選択' + selectedCount + '件';
-            addCandidateBtn.disabled = candidates.length >= MAX_CANDIDATES;
         }
         
         function hasEditedCandidates() {
@@ -289,15 +291,22 @@
             validateSelected();
         });
 
-        function setSaving(saving) {
-            input.disabled = saving;
-            ocrbtn.disabled = saving || img.hidden;
-            validateBtn.disabled = saving;
-            saveBtn.disabled = saving;
-            addCandidateBtn.disabled = saving || candidates.length >= MAX_CANDIDATES;
+        function updateControls() {
+            const locked = isSending || pendingRequest !== null;
+            input.disabled = locked;
+            ocrbtn.disabled = locked || img.hidden;
+            validateBtn.disabled = locked;
+            addCandidateBtn.disabled = locked || candidates.length >= MAX_CANDIDATES;
             candidateList.querySelectorAll('input, button').forEach(function(el) {
-                el.disabled = saving;
+                el.disabled = locked;
             });
+            
+            saveBtn.disabled = isSending;
+            if (pendingRequest !== null && !isSending) {
+                saveBtn.textContent = '保存結果を確認する（同じ内容で再送）';
+            } else {
+                saveBtn.textContent = '選択した候補を保存';
+            }
         }
 
         // Laravelの入力エラーを，行のidに対応づける
@@ -326,22 +335,27 @@
         }
 
         saveBtn.addEventListener('click', async function() {
-            const selected = validateSelected();
-            if (!selected) {
-                return;
+            // 結果がわからない要求がなければ，新しい要求を作る
+            if (pendingRequest === null) {
+                const selected = validateSelected();
+                if (!selected) {
+                    return;
+                }
+                pendingRequest = {
+                    key: crypto.randomUUID(),
+                    cards: selected.map(function(c) {
+                        return { id: c.id, term: c.term, meaning: c.meaning };
+                    }),
+                };
             }
-            const cards = selected.map(function(c) {
-                return { id: c.id, term: c.term, meaning: c.meaning };
-            });
+            // 結果不明の要求があれば，それをそのまま再送する
+            const sentCards = pendingRequest.cards;
 
-            // 同じ内容の再送なら同じキー，内容が変わったら新しいキー
-            const cardsJson = JSON.stringify(cards);
-            if (!pendingRequest || pendingRequest.cardsJson !== cardsJson) {
-                pendingRequest = { key: crypto.randomUUID(), cardsJson: cardsJson };
-            }
-            setSaving(true);
+            isSending = true;
+            updateControls();
             saveMessage.textContent = '保存中．．．';
-            
+
+
             try {
                 const response = await fetch(bulkUrl, {
                     method: 'POST',
@@ -350,11 +364,12 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({ request_key: pendingRequest.key, cards: cards }),
+                    body: JSON.stringify({ request_key: pendingRequest.key, cards: sentCards }),
                 });
                 if (response.status === 422) {
+                    pendingRequest = null; // 保存されていないことが確定したので，編集できるようにする
                     const data = await response.json();
-                    const otherMessages = showServerErrors(data.errors, cards);
+                    const otherMessages = showServerErrors(data.errors, sentCards);
                     saveMessage.textContent = '入力内容に問題があります．' + otherMessages.join(' ');
                     return;
                 }
@@ -363,22 +378,23 @@
                 }
 
                 const data = await response.json();
-                const savedIds = cards.map(function(c) {
+                const savedIds = sentCards.map(function(c) {
                     return c.id;
                 });
                 candidates = candidates.filter(function(c) {
                     return !savedIds.includes(c.id);
                 });
-                pendingRequest = null;
+                pendingRequest = null;  
                 showSaved(data.saved_count);
             } catch (error) {
                 console.error(error);
-                saveMessage.textContent = '保存に失敗しました．もう一度保存してください． ';
+                // pendingRequset は残す → 候補はロックされたまま
+                saveMessage.textContent = '保存結果を確認できませんでした．「保存結果を確認する」を押して，同じ内容をもう一度送ってください．';
             } finally {
-                setSaving(false);
-                renderCandidates();
+                isSending = false;
+                renderCandidates();     // 中で updateControls() も呼ばれる
             }
-        })
+        });
 
         renderCandidates();
 

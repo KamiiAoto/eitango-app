@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class CardBulkRequest extends Model
 {
-    protected $fillable = ['deck_id', 'request_key', 'saved_count'];
+    protected $fillable = ['deck_id', 'request_key', 'request_hash', 'saved_count'];
 }
