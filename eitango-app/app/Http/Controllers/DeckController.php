@@ -68,4 +68,34 @@ class DeckController extends Controller
         $deck = $request->user()->decks()->findOrFail($id);
         return view('decks.scan', ['deck' => $deck]);
     }
+
+    public function  export(Request $request, $id)
+    {
+        $deck = $request->user()->decks()->findOrFail($id);
+        $cards = $deck->cards()->orderBy('id')->get();
+
+        $lines = ['#separator:Tab', '#html:false'];
+        foreach ($cards as $card) {
+            $lines[] = implode("\t", [
+                $this->ankiField($card->export_key),
+                $this->ankiField($card->term),
+                $this->ankiField($card->meaning),
+            ]);
+        }
+        $content = implode("\n", $lines) . "\n";
+
+        return response()->streamDownload(function () use ($content) {
+            echo $content;
+        }, 'deck-' . $deck->id . '-anki.txt', [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+        ]);
+    }
+
+    // Ankiの1項目分の文字列を作る：タブ・改行を空白にし，" を "" にして全体を " で囲む
+    private function ankiField(string $value): string
+    {
+        $value = preg_replace('/[\t\r\n]+/u', ' ', $value);
+        return '"' . str_replace('"', '""', $value) . '"';
+    }
+
 }

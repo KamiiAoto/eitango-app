@@ -35,6 +35,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/decks/{deck}/scan', [DeckController::class, 'scan']);
     
     Route::post('/decks/{deck}/cards/bulk', [CardController::class, 'bulkStore']);
+    Route::get('/decks/{deck}/export', [DeckController::class, 'export']);
     
 
 
