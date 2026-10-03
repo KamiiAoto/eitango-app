@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 class Card extends Model
 {
@@ -11,6 +13,10 @@ class Card extends Model
     // 保存の直前に，必ず重複判定用のハッシュを計算し直す
     protected static function booted(): void
     {
+        static::creating(function (Card $card) {
+            $card->export_key = (string) Str::uuid();
+        });
+    
         static::saving(function (Card $card) {
             $card->content_hash = self::contentHash($card->term, $card->meaning);
         });
@@ -42,6 +48,12 @@ class Card extends Model
         ]));
     }
     
+    // 一意制約エラーが「同じデッキ・同じ内容」によるものか
+    public static function isDuplicateContent(UniqueConstraintViolationException $e): bool
+    {
+        return str_contains($e->errorInfo[2] ?? '', 'content_hash');
+    }
+
     // 連続した空白（全角スペース・タブ・改行を含む）を1つにまとめ、前後を除く
     private static function normalizeSpaces(string $text): string
     {

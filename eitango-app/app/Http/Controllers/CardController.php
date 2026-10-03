@@ -20,6 +20,9 @@ class CardController extends Controller
         try {
             $deck->cards()->create($validated);
         } catch (UniqueConstraintViolationException $e) {
+            if (!Card::isDuplicateContent($e)) {
+                throw $e;
+            }
             throw ValidationException::withMessages([
                 'term' => 'このデッキには，同じ英語・訳のカードがすでに登録されています',
             ]);
@@ -45,6 +48,9 @@ class CardController extends Controller
         try {
             $card->update($validated);
         } catch (UniqueConstraintViolationException $e) {
+            if (!Card::isDuplicateContent($e)) {
+                throw $e;
+            }
             throw ValidationException::withMessages([
                 'term' => 'このデッキには，同じ英語・訳のカードがすでに登録されています',
             ]);
@@ -104,7 +110,9 @@ class CardController extends Controller
                         ]);
                         $savedCount++;
                     } catch (UniqueConstraintViolationException $e) {
-                        // cards の一意制約は (deck_id, content_hash) だけなので，内容の重複と判断できる
+                        if (!Card::isDuplicateContent($e)) {
+                            throw $e;
+                        }
                         $duplicateCount++;
                     }
                 }
