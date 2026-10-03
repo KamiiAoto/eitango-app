@@ -22,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('card_bulk_requests', function (Blueprint $table) {
-            $table->dropColum('request_hash');
+            $table->dropColumn('request_hash');
         });
     }
 };

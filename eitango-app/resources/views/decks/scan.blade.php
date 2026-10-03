@@ -45,7 +45,6 @@
         });
 
         input.addEventListener('change', function() {
-            ocrbtn.disabled = true;
             img.hidden = true;
             img.removeAttribute('src');
             resultEl.textContent = '';
@@ -57,7 +56,8 @@
                 return
             }
             
-            input.disabled = true;
+            isReadingFile = true;
+            updateControls();
             statusEl.textContent = '画像を読み込み中．．．';
             
             const reader = new FileReader();
@@ -66,12 +66,13 @@
                 img.src = reader.result;
                 img.hidden = false;
                 statusEl.textContent = '';
-                input.disabled = false;
-                ocrbtn.disabled = false;
+                isReadingFile = false;
+                updateControls();
             });
             reader.addEventListener('error', function() {
                 statusEl.textContent = '画像の読み込みに失敗しました．別の画像を選んでください．';
-                input.disabled = false;
+                isReadingFile = false;
+                updateControls();
             });
 
             reader.readAsDataURL(file);
@@ -91,8 +92,8 @@
             }
             clearCandidates();
             
-            input.disabled  = true;
-            ocrbtn.disabled = true;
+            isRunningOCR = true;
+            updateControls();
             statusEl.textContent = '読み取り中．．．';
             resultEl.textContent = '';
 
@@ -122,8 +123,8 @@
                         console.error('ワーカーの終了に失敗:', e);
                     }
                 }
-                input.disabled  = false;
-                ocrbtn.disabled = false;
+                isRunningOCR = false;
+                updateControls();
             }
         }
 
@@ -146,6 +147,8 @@
         
         let pendingRequest = null;  // 結果が確定していない要求 { key: 'UUID', cards: [送った行] }
         let isSending = false;
+        let isReadingFile = false;
+        let isRunningOCR = false;
 
         addCandidateBtn.addEventListener('click', function() {
             if (candidates.length >= MAX_CANDIDATES) {
@@ -292,7 +295,9 @@
         });
 
         function updateControls() {
-            const locked = isSending || pendingRequest !== null;
+            const busy = isReadingFile || isRunningOCR || isSending;
+            const locked = busy || pendingRequest !== null;
+            
             input.disabled = locked;
             ocrbtn.disabled = locked || img.hidden;
             validateBtn.disabled = locked;
@@ -301,7 +306,7 @@
                 el.disabled = locked;
             });
             
-            saveBtn.disabled = isSending;
+            saveBtn.disabled = busy;
             if (pendingRequest !== null && !isSending) {
                 saveBtn.textContent = '保存結果を確認する（同じ内容で再送）';
             } else {
@@ -332,6 +337,18 @@
             link.href = deckUrl;
             link.textContent = 'デッキ詳細で確認する';
             saveMessage.append(link);
+        }
+
+        function showConflict() {
+            saveMessage.replaceChildren();
+            saveMessage.append('保存キーが競合しています．同じ内容がすでに保存されている可能性があります．');
+            const link = document.createElement('a');
+            link.href = deckUrl;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'デッキ詳細で保存済みの内容を確認する';
+            saveMessage.append(link);
+            saveMessage.append('(別タブで開きます)．確認後，まだ保存されていない候補だけを選んで保存してください．');
         }
 
         saveBtn.addEventListener('click', async function() {
@@ -373,6 +390,13 @@
                     saveMessage.textContent = '入力内容に問題があります．' + otherMessages.join(' ');
                     return;
                 }
+
+                if (response.status === 409) {
+                    pendingRequest = null;  // 同じ再送では解決しないので，ロックを解除する
+                    showConflict();
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
                 }
