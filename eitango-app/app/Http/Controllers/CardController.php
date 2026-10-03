@@ -77,44 +77,65 @@ class CardController extends Controller
         $hash = hash('sha256', json_encode($contents));
 
         try {
-            $savedCount = DB::transaction(function () use ($deck, $validated, $hash) {
-                // 同じキーで保存済みなら，保存せず前回の件数を返す
+            $result = DB::transaction(function () use ($deck, $validated, $hash) {
+                // 同じキーで保存済みなら，保存せず初回の結果を返す
                 $existing = $deck->cardBulkRequests()
                     ->where('request_key', $validated['request_key'])
                     ->first();
                 if ($existing) {
-                    return $this->savedCountForRetry($existing, $hash);
+                    return $this->resultForRetry($existing, $hash);
                 }
 
                 // 先にキーを記録する（同時に届いた２つ目はここで一意制約エラーになる）
-                $deck->cardBulkRequests()->create([
-                    'request_key'  => $validated['request_key'] ,
-                    'request_hash' => $hash,
-                    'saved_count'  => count($validated['cards']) ,
+                $record = $deck->cardBulkRequests()->create([
+                    'request_key'     => $validated['request_key'],
+                    'request_hash'    => $hash,
+                    'saved_count'     => 0,
+                    'duplicate_count' => 0    
                 ]);
+                
+                $savedCount = 0;
+                $duplicateCount = 0;
                 foreach ($validated['cards'] as $card) {
-                    $deck->cards()->create([
-                        'term'    => $card['term'],
-                        'meaning' => $card['meaning'],
-                    ]);
+                    try {
+                        $deck->cards()->create([
+                            'term'    => $card['term'],
+                            'meaning' => $card['meaning'],
+                        ]);
+                        $savedCount++;
+                    } catch (UniqueConstraintViolationException $e) {
+                        // cards の一意制約は (deck_id, content_hash) だけなので，内容の重複と判断できる
+                        $duplicateCount++;
+                    }
                 }
 
-                return count($validated['cards']);
+                // 確定した件数を，カードと同じトランザクションで記録する
+                $record->update([
+                    'saved_count'     => $savedCount,
+                    'duplicate_count' => $duplicateCount,
+                ]);
+
+                return ['saved_count' => $savedCount, 'duplicate_count' => $duplicateCount];
             });
         } catch (UniqueConstraintViolationException $e) {
-            // ほぼ同時に届いた同じ要求：先に処理された方の結果を返す
+            // 要求キーの衝突：先に処理された方の結果を返す
             $existing = $deck->cardBulkRequests()
                 ->where('request_key', $validated['request_key'])
                 ->first();
-            $savedCount = $this->savedCountForRetry($existing, $hash);
+            if (!$existing) {
+                throw $e;   // 要求キーの衝突ではない一意制約エラーなので，そのまま投げる
+            }
+            $result = $this->resultForRetry($existing, $hash);
         }
-
-        return response()->json(['saved_count' => $savedCount]);
+        return response()->json($result);
     }
 
-    private function savedCountForRetry($existing, $hash)
+    private function resultForRetry($existing, $hash)
     {
         abort_if($existing->request_hash !== $hash, 409, 'この保存キーは別の内容で使用済みです');
-        return $existing->saved_count;
+        return[
+            'saved_count'     => $existing->saved_count,
+            'duplicate_count' => $existing->duplicate_count,
+        ];
     }
 }

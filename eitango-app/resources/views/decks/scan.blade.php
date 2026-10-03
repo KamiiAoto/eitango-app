@@ -400,9 +400,13 @@
             return otherMessages;
         }
 
-        function showSaved(count) {
+        function showSaved(savedCount, duplicateCount) {
             saveMessage.replaceChildren();
-            saveMessage.append(count + '件保存しました．');
+            let text = savedCount + '件保存しました．';
+            if (duplicateCount > 0) {
+                text += duplicateCount + '件は同じ内容のカードが登録済みのため，スキップしました．';
+            }
+            saveMessage.append(text);
             const link = document.createElement('a');
             link.href = deckUrl;
             link.textContent = 'デッキ詳細で確認する';
@@ -479,7 +483,7 @@
                     return !savedIds.includes(c.id);
                 });
                 pendingRequest = null;  
-                showSaved(data.saved_count);
+                showSaved(data.saved_count, data.duplicate_count);
             } catch (error) {
                 console.error(error);
                 // pendingRequset は残す → 候補はロックされたまま
