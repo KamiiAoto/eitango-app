@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Card;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Validation\ValidationException;
 
 class CardController extends Controller
 {
@@ -16,7 +17,13 @@ class CardController extends Controller
             'term'    => 'required|string|max:150',
             'meaning' => 'required|string|max:1000',
         ]);
-        $deck->cards()->create($validated);
+        try {
+            $deck->cards()->create($validated);
+        } catch (UniqueConstraintViolationException $e) {
+            throw ValidationException::withMessages([
+                'term' => 'このデッキには，同じ英語・訳のカードがすでに登録されています',
+            ]);
+        }
         return redirect('/decks/' . $deck_id);
     }
 
@@ -35,7 +42,13 @@ class CardController extends Controller
             'term'      => 'required|string|max:150',
             'meaning'   => 'required|string|max:1000',
         ]);
-        $card->update($validated);
+        try {
+            $card->update($validated);
+        } catch (UniqueConstraintViolationException $e) {
+            throw ValidationException::withMessages([
+                'term' => 'このデッキには，同じ英語・訳のカードがすでに登録されています',
+            ]);
+        }
         return redirect('/decks/' . $card->deck_id);
     }
 

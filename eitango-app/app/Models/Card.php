@@ -8,8 +8,43 @@ class Card extends Model
 {
     protected $fillable = ['deck_id', 'term', 'meaning'];
     
+    // 保存の直前に，必ず重複判定用のハッシュを計算し直す
+    protected static function booted(): void
+    {
+        static::saving(function (Card $card) {
+            $card->content_hash = self::contentHash($card->term, $card->meaning);
+        });
+    }
+
     public function deck()
     {
         return $this->belongsTo(Deck::class);
+    }
+
+    // 英語：空白を整えて小文字にする（比較用）
+    public static function normalizeTerm(string $term): string
+    {
+        return mb_strtolower(self::normalizeSpaces($term));
+    }
+
+    // 訳：空白だけを整える（比較用）
+    public static function normalizeMeaning(string $meaning): string
+    {
+        return self::normalizeSpaces($meaning);
+    }
+    
+    // 英語と訳の組み合わせから、重複判定用のハッシュを作る
+    public static function contentHash(string $term, string $meaning): string
+    {
+        return hash('sha256', json_encode([
+            self::normalizeTerm($term),
+            self::normalizeMeaning($meaning),
+        ]));
+    }
+    
+    // 連続した空白（全角スペース・タブ・改行を含む）を1つにまとめ、前後を除く
+    private static function normalizeSpaces(string $text): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', $text));
     }
 }
