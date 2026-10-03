@@ -19,6 +19,7 @@
     </div>
     <div>
         <p id="status"></p>
+        <p>参考：元画像のOCR結果．誤認識を含みます</p>
         <pre id="result"></pre>
     </div>
     <h2>カード候補</h2>
@@ -100,17 +101,23 @@
             let worker = null;
             try {
                 worker = await Tesseract.createWorker('eng+jpn');
-                await worker.setParameters({
-                    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT
-                });
-                const result = await worker.recognize(img.src);
-                const text   = result.data.text.trim();
                 
-                if (text === '') {
-                    statusEl.textContent = '文字が検出されませんでした．別の画像を試してください．';
+                const fullText    = await recognizeWith(worker, 'eng+jpn', img.src);
+                const termText    = await recognizeWith(worker, 'eng', prepareArea(TERM_AREA, isBlackInk));
+                const meaningText = await recognizeWith(worker, 'jpn', prepareArea(MEANING_AREA, isRedInk));
+
+                // 全文は，候補を直す時の参考として表示する
+                resultEl.textContent = fullText;
+
+                const term    = cleanText(termText);
+                const meaning = cleanMeaning(meaningText);
+                
+                if (term === '' && meaning === '') {
+                    statusEl.textContent = '英語と訳を読み取れませんでした．「候補を追加」から手で入力してください．';
                 } else {
-                    statusEl.textContent = '読み取り完了';
-                    resultEl.textContent = result.data.text;
+                    candidates.push({ id: nextId++, term: term, meaning: meaning, selected: false });
+                    renderCandidates();
+                    statusEl.textContent = '読み取り完了，候補の内容を確認・修正し，チェックを入れて保存してください．';
                 }
             } catch (error) {
                 console.error(error);
@@ -126,6 +133,69 @@
                 isRunningOCR = false;
                 updateControls();
             }
+        }
+
+        // 見出し語が上、訳が下にある画像の読み取り範囲（画像の高さに対する割合）
+        const TERM_AREA    = { top: 0, bottom: 0.40 };
+        const MEANING_AREA = { top: 0.65, bottom: 1.00};
+
+        // 割合で決めた範囲を，元画像のピクセル座標に変換する
+        function toRectangle(area) {
+            const top    = Math.round(img.naturalHeight * area.top);
+            const bottom = Math.round(img.naturalHeight * area.bottom);
+            return { left: 0,  top: top, width: img.naturalWidth, height: bottom-top };
+        }
+
+        function isBlackInk(r, g, b) {
+            return 0.299*r + 0.587*g + 0.114*b < 100;
+        }
+
+        function isRedInk(r, g, b) {
+            return r - g > 60 && r - b > 40;
+        }
+
+        // 元画像の一部を切り出し，文字の色だけを黒．それ以外を白にしたキャンバスを返す
+        function prepareArea(area, isInk) {
+            const rect = toRectangle(area);
+            const padding = 40;
+
+            const canvas = document.createElement('canvas');
+            canvas.width  = rect.width + padding*2;
+            canvas.height = rect.height + padding*2;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, rect.left, rect.top, rect.width, rect.height, padding, padding, rect.width, rect.height);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d = imageData.data;
+            for (let i=0; i<d.length; i+=4) {
+                const v = isInk(d[i], d[i+1], d[i+2]) ? 0 : 255;
+                d[i] = v;
+                d[i+1] = v;
+                d[i+2] = v;
+            }
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        // 同じ worker の言語を切り替えて読み取る
+        async function recognizeWith(worker, lang, image) {
+            await worker.reinitialize(lang);
+            await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT });
+            const result = await worker.recognize(image);
+            return result.data.text;
+        }
+
+        // 日本語の文字と文字の間に入った空白を取り除く
+        function cleanMeaning(text) {
+            return cleanText(text).replace(/(?<=[^\x00-\x7F]) (?=[^\x00-\x7F])/g, '');
+        }
+
+        // 改行や連続した空白を１つの空白にまとめる
+        function cleanText(text) {
+            return text.replace(/\s+/g, ' ').trim();
         }
 
         const MAX_CANDIDATES = 50;
