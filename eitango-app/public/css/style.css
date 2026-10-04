@@ -175,7 +175,7 @@ input:disabled {
     margin: 4px 0 0;
 }
 
-.is-invalid {
+input[type='text'].is-invalid {
     border-color: var(--color-danger);
 }
 
