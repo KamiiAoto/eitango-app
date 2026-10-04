@@ -6,6 +6,7 @@
     <title>画像読み取り - {{ $deck->name }}</title>
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
 </head>
 <body>
     <h1>{{ $deck->name }} - 画像読み取り</h1>
@@ -15,10 +16,10 @@
         <img id="preview" hidden style="max-width:400px;">
     </div>
     <div>
-        <button id="ocrBtn" disabled>読み取り開始</button>
+        <button id="ocrBtn" class="btn-primary" disabled>読み取り開始</button>
     </div>
     <div>
-        <p id="status"></p>
+        <p id="status" class="message"></p>
         <p>参考：元画像のOCR結果．誤認識を含みます</p>
         <pre id="result"></pre>
     </div>
@@ -27,9 +28,9 @@
     <button type="button" id="addCandidateBtn">候補を追加</button>
     <div id="candidateList"></div>
     <button type="button" id="validateBtn">入力を確認</button>
-    <p id="validateMessage"></p>
-    <button type="button" id="saveBtn">選択した候補を保存</button>
-    <p id="saveMessage"></p>
+    <p id="validateMessage" class="message"></p>
+    <button type="button" id="saveBtn" class="btn-primary">選択した候補を保存</button>
+    <p id="saveMessage" class="message"></p>
     
 
     <script>
@@ -260,6 +261,7 @@
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.type = 'button';
+                deleteBtn.className = 'btn-danger';
                 deleteBtn.textContent = '削除';
                 deleteBtn.addEventListener('click', function() {
                     candidates = candidates.filter(function(c) {
@@ -272,6 +274,7 @@
                 if (errors[candidate.id]) {
                     errors[candidate.id].forEach(function(message) {
                         const p = document.createElement('p');
+                        p.className = 'error';
                         p.textContent = message;
                         row.append(p);
                     });

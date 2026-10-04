@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     <title>{{ $deck->name }}</title>
 </head>
 <body>
@@ -13,18 +14,18 @@
     <form action="/decks/{{ $deck->id }}/cards" method="post">
         @csrf
         <div>
-            <input type="text" name="term" placeholder="英単語・熟語" value="{{ old('term') }}">
+            <input type="text" name="term" placeholder="英単語・熟語" value="{{ old('term') }}" class="@error('term') is-invalid @enderror">
             @error('term')
-                <p>{{ $message }}</p>
+                <p class="error">{{ $message }}</p>
             @enderror
         </div>
         <div>
-            <input type="text" name="meaning" placeholder="日本語訳" value="{{ old('meaning') }}">
+            <input type="text" name="meaning" placeholder="日本語訳" value="{{ old('meaning') }}" class="@error('meaning') is-invalid @enderror">
             @error('meaning')
-                <p>{{ $message }}</p>
+                <p class="error">{{ $message }}</p>
             @enderror
         </div>
-        <button type="submit">追加</button>
+        <button type="submit" class="btn-primary">追加</button>
     </form>
     <form action="/decks/{{ $deck->id }}" method="get">
         <input type="text" name="q" value="{{ $q }}" placeholder="英語または日本語で検索">
@@ -33,22 +34,33 @@
             <a href="/decks/{{ $deck->id }}">検索解除</a>
         @endif
     </form>
-    @forelse ($cards as $card)
-        <p>{{ $card->term }} - {{ $card->meaning }}</p>
-        <a href="/cards/{{ $card->id }}/edit">編集</a>
-        <form action="/cards/{{ $card->id }}" method="post" class="card-delete-form" data-term="{{ $card->term }}">
-            @csrf
-            @method('DELETE')
-            <button type="submit">削除</button>
-        </form>
-    @empty
-        @if ($q !=='')
-            <p>「{{ $q }}」に一致するカードはありません</p>
-        @else
-            <p>カードはまだありません</p>
-        @endif
-    @endforelse
-    {{ $cards->links() }}
+    <ul class="item-list">
+        @forelse ($cards as $card)
+            <li class="item">
+                <div>
+                    <div class="item-title">{{ $card->term }}</div>
+                    <div class="item-meta">{{ $card->meaning }}</div>
+                </div>
+                <div class="item-actions">
+                    <a href="/cards/{{ $card->id }}/edit">編集</a>
+                    <form action="/cards/{{ $card->id }}" method="post" class="card-delete-form" data-term="{{ $card->term }}">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn-danger">削除</button>
+                    </form>
+                </div>
+            </li>
+        @empty
+            <li class="empty">
+                @if ($q !=='')
+                    「{{ $q }}」に一致するカードはありません
+                @else
+                    カードはまだありません
+                @endif
+            </li>
+        @endforelse
+    </ul>
+    {{ $cards->links('pagination::default') }}
 
     <script>
         document.querySelectorAll('.card-delete-form').forEach(function(form) {

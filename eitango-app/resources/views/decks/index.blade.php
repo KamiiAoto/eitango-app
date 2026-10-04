@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     <title>単語帳一覧</title>
 </head>
 <body>
@@ -10,23 +11,32 @@
 
     <form action="/decks" method="post">
         @csrf
-        <input type="text" name="name" placeholder="単語帳の名前">
+        <input type="text" name="name" placeholder="単語帳の名前" value="{{ old('name') }}" class="@error('name') is-invalid @enderror">
         @error('name')
-            <p>{{ $message }}</p>
+            <p class="error">{{ $message }}</p>
         @enderror
-        <button type="submit">作成</button>
+        <button type="submit" class="btn-primary">作成</button>
     </form>
-    @forelse ($decks as $deck)
-        <a href="/decks/{{ $deck->id }}">{{ $deck->name }}</a>
-        <a href="/decks/{{ $deck->id }}/edit">編集</a>
-        <form action="/decks/{{ $deck->id }}" method="post" class="delete-form" data-name="{{ $deck->name }}" data-count="{{ $deck->cards_count }}">
-            @csrf
-            @method('DELETE')
-            <button type="submit">削除</button>
-        </form>
-    @empty
-        <p>単語帳はまだありません</p>
-    @endforelse
+    <ul class="item-list">
+        @forelse ($decks as $deck)
+        <li class="item">
+            <div>
+                <a href="/decks/{{ $deck->id }}" class="item-title">{{ $deck->name }}</a>
+                <div class="item-meta">{{ $deck->cards_count }}枚</div>
+            </div>
+            <div class="item-actions"> 
+                <a href="/decks/{{ $deck->id }}/edit">編集</a>
+                <form action="/decks/{{ $deck->id }}" method="post" class="delete-form" data-name="{{ $deck->name }}" data-count="{{ $deck->cards_count }}">                    
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn-danger">削除</button>
+                </form>
+            </div>
+        </li>
+        @empty
+            <li class="empty">単語帳はまだありません</li>
+        @endforelse
+    </ul>
 
     <script>
     document.querySelectorAll('.delete-form').forEach(function(form){

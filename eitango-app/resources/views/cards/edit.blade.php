@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     <title>カード編集</title>
 </head>
 <body>
@@ -11,18 +12,18 @@
         @csrf
         @method('PATCH')
         <div>
-            <input type="text" name="term" value="{{ old('term', $card->term) }}">
+            <input type="text" name="term" value="{{ old('term', $card->term) }}" class="@error('term') is-invalid @enderror">
             @error('term')
-                <p>{{ $message }}</p>
+                <p class="error">{{ $message }}</p>
             @enderror
         </div>
         <div>
-            <input type="text" name="meaning" value="{{ old('meaning', $card->meaning) }}">
+            <input type="text" name="meaning" value="{{ old('meaning', $card->meaning) }}" class="@error('meaning') is-invalid @enderror">
             @error('meaning')
-                <p>{{ $message }}</p>
+                <p class="error">{{ $message }}</p>
             @enderror
         </div>
-        <button type="submit">更新</button>
+        <button type="submit" class="btn-primary">更新</button>
     </form>
     <a href="/decks/{{ $card->deck_id }}">キャンセル</a>
 </body>
