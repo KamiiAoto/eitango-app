@@ -1,7 +1,7 @@
 # 英単語カードアプリ（eitango）
 
-受講番号：6th18
-氏名：山田太郎　（提出前に編集）
+受講番号：6th-18
+氏名：神井碧斗
 
 ## 1. プロダクトの紹介
 
@@ -18,7 +18,6 @@
 **この題材を選んだ理由**
 
 英語の資格試験に向けて，Ankiで単語の復習をしています．しかし，単語カードの作成に手間がかかり，学習効率が大きく落ちていました．
-
 Ankiは所定の形式のファイルを読み込むと，単語をまとめて登録できます．ただ，これまでの手順は次のように多く，これすら面倒になってAnkiをあまり活用できなくなっていました．
 
 1. 単語帳の写真を撮る
@@ -41,7 +40,6 @@ Ankiは所定の形式のファイルを読み込むと，単語をまとめて�
 4. 候補欄の英語・訳を元画像と見比べて修正し，チェックを入れて「選択した候補を保存」
 5. デッキ詳細でカードが追加されていることを確認する
 6. 「Anki用ファイルをダウンロード」を押し，Ankiに取り込む（設定は [docs/anki-setup.md](docs/anki-setup.md)）
-7. アプリでカードの訳を編集し，再度ダウンロードしてAnkiに取り込む → カードが増えずに内容が更新される
 
 テスト用アカウント：
 
@@ -53,13 +51,12 @@ Ankiは所定の形式のファイルを読み込むと，単語をまとめて�
 
 **画面収録（必須）**
 
-<!-- TODO: 受講番号を入れたファイル名にする -->
-- 動画ファイル名：`（受講番号）_eitango_demo.mp4`
-- 上記「3. 操作方法」の手順 1〜7 を順番に操作している様子を収録
+- 動画ファイル名：`6th-18_eitango_demo.mp4`
+- 上記「3. 操作方法」の手順 1〜6 を順番に操作している様子を収録
 
 ## 5. 補足
 
-**起動手順**（Docker Desktopが必要）
+**起動手順**
 
 ```bash
 cd eitango-app
@@ -67,6 +64,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd):/var/www/html" -w /var/www/htm
   laravelsail/php84-composer:latest composer install --ignore-platform-reqs
 cp .env.example .env
 ./vendor/bin/sail up -d
+# MySQLの起動に数十秒かかるため，少し待ってから次を実行する
 ./vendor/bin/sail artisan key:generate
 ./vendor/bin/sail artisan migrate --seed
 ./vendor/bin/sail npm install && ./vendor/bin/sail npm run build
